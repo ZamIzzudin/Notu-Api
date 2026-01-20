@@ -13,6 +13,10 @@ export interface INote extends Document {
   images: IImage[];
   date: Date;
   userId?: string;
+  isPinned: boolean;
+  isArchived: boolean;
+  isDeleted: boolean;
+  deletedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -31,6 +35,10 @@ const NoteSchema = new Schema<INote>(
     images: { type: [ImageSchema], default: [] },
     date: { type: Date, default: Date.now },
     userId: { type: String, index: true },
+    isPinned: { type: Boolean, default: false },
+    isArchived: { type: Boolean, default: false },
+    isDeleted: { type: Boolean, default: false },
+    deletedAt: { type: Date, default: null },
   },
   {
     timestamps: true,

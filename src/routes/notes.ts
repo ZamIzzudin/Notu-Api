@@ -12,7 +12,21 @@ router.use(authMiddleware);
 // Get all notes for authenticated user
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
-    const notes = await Note.find({ userId: req.userId }).sort({ date: -1 });
+    const { archived, deleted } = req.query;
+    
+    let filter: any = { userId: req.userId };
+    
+    if (deleted === 'true') {
+      filter.isDeleted = true;
+    } else if (archived === 'true') {
+      filter.isDeleted = { $ne: true };
+      filter.isArchived = true;
+    } else {
+      filter.isDeleted = { $ne: true };
+      filter.isArchived = { $ne: true };
+    }
+    
+    const notes = await Note.find(filter).sort({ isPinned: -1, date: -1 });
     res.json(notes);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch notes' });
@@ -35,7 +49,7 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
 // Create note
 router.post('/', async (req: AuthRequest, res: Response) => {
   try {
-    const { title, content, color, images } = req.body;
+    const { title, content, color, images, isPinned } = req.body;
 
     const uploadedImages = [];
     if (images && images.length > 0) {
@@ -60,6 +74,9 @@ router.post('/', async (req: AuthRequest, res: Response) => {
       images: uploadedImages,
       userId: req.userId,
       date: new Date(),
+      isPinned: isPinned || false,
+      isArchived: false,
+      isDeleted: false,
     });
 
     await note.save();
@@ -73,7 +90,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 // Update note
 router.put('/:id', async (req: AuthRequest, res: Response) => {
   try {
-    const { title, content, color, images } = req.body;
+    const { title, content, color, images, isPinned, isArchived } = req.body;
     const existingNote = await Note.findOne({ _id: req.params.id, userId: req.userId });
 
     if (!existingNote) {
@@ -108,15 +125,20 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
       }
     }
 
+    const updateData: any = {
+      title: title || 'Untitled',
+      content,
+      color,
+      images: uploadedImages,
+      date: new Date(),
+    };
+
+    if (typeof isPinned === 'boolean') updateData.isPinned = isPinned;
+    if (typeof isArchived === 'boolean') updateData.isArchived = isArchived;
+
     const updatedNote = await Note.findByIdAndUpdate(
       req.params.id,
-      {
-        title: title || 'Untitled',
-        content,
-        color,
-        images: uploadedImages,
-        date: new Date(),
-      },
+      updateData,
       { new: true }
     );
 
@@ -127,25 +149,75 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// Delete note
+// Soft delete note (move to trash)
 router.delete('/:id', async (req: AuthRequest, res: Response) => {
   try {
+    const { permanent } = req.query;
     const note = await Note.findOne({ _id: req.params.id, userId: req.userId });
+    
     if (!note) {
       return res.status(404).json({ error: 'Note not found' });
     }
 
-    // Delete images from Cloudinary
-    for (const img of note.images) {
-      if (img.publicId) {
-        await deleteFile(img.publicId);
+    if (permanent === 'true') {
+      // Permanent delete - remove images from Cloudinary
+      for (const img of note.images) {
+        if (img.publicId) {
+          await deleteFile(img.publicId);
+        }
+      }
+      await Note.findByIdAndDelete(req.params.id);
+      res.json({ message: 'Note permanently deleted' });
+    } else {
+      // Soft delete - move to trash
+      await Note.findByIdAndUpdate(req.params.id, {
+        isDeleted: true,
+        deletedAt: new Date(),
+      });
+      res.json({ message: 'Note moved to trash' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete note' });
+  }
+});
+
+// Restore note from trash
+router.post('/:id/restore', async (req: AuthRequest, res: Response) => {
+  try {
+    const note = await Note.findOne({ _id: req.params.id, userId: req.userId, isDeleted: true });
+    
+    if (!note) {
+      return res.status(404).json({ error: 'Note not found in trash' });
+    }
+
+    await Note.findByIdAndUpdate(req.params.id, {
+      isDeleted: false,
+      deletedAt: null,
+    });
+
+    res.json({ message: 'Note restored successfully' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to restore note' });
+  }
+});
+
+// Empty trash (permanently delete all trashed notes)
+router.delete('/trash/empty', async (req: AuthRequest, res: Response) => {
+  try {
+    const trashedNotes = await Note.find({ userId: req.userId, isDeleted: true });
+    
+    for (const note of trashedNotes) {
+      for (const img of note.images) {
+        if (img.publicId) {
+          await deleteFile(img.publicId);
+        }
       }
     }
 
-    await Note.findByIdAndDelete(req.params.id);
-    res.json({ message: 'Note deleted successfully' });
+    await Note.deleteMany({ userId: req.userId, isDeleted: true });
+    res.json({ message: 'Trash emptied successfully' });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to delete note' });
+    res.status(500).json({ error: 'Failed to empty trash' });
   }
 });
 
