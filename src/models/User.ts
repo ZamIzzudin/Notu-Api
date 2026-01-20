@@ -1,5 +1,5 @@
 import mongoose, { Document, Schema, CallbackWithoutResultAndOptionalError } from 'mongoose';
-import bcrypt from 'bcryptjs';
+import bcrypt from 'bcrypt';
 
 export interface IUser extends Document {
   email: string;

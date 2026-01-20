@@ -1,9 +1,10 @@
 import express from 'express';
 import cors from 'cors';
-import { config } from './config';
-import { connectDB } from './config/database';
-import notesRoutes from './routes/notes';
-import authRoutes from './routes/auth';
+import fileUpload from 'express-fileupload';
+import { config } from './src/config';
+import { connectDB } from './src/config/database';
+import notesRoutes from './src/routes/notes';
+import authRoutes from './src/routes/auth';
 
 const app = express();
 
@@ -14,6 +15,10 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(fileUpload({
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+  uploadTimeout: 60000,
+}));
 
 // Routes
 app.get('/', (req, res) => {

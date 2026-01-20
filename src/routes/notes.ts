@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
-import { Note, INote } from '../models/Note';
-import { uploadImage, deleteImage } from '../config/cloudinary';
+import { UploadedFile } from 'express-fileupload';
+import { Note } from '../models/Note';
+import { uploadFile, uploadBase64, deleteFile } from '../config/upload';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 
 const router = Router();
@@ -40,7 +41,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
     if (images && images.length > 0) {
       for (const img of images) {
         if (img.url.startsWith('data:')) {
-          const uploaded = await uploadImage(img.url);
+          const uploaded = await uploadBase64(img.url);
           uploadedImages.push({
             id: img.id || Date.now().toString(),
             url: uploaded.url,
@@ -53,7 +54,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
     }
 
     const note = new Note({
-      title: title || 'Tanpa Judul',
+      title: title || 'Untitled',
       content,
       color,
       images: uploadedImages,
@@ -83,7 +84,7 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
     if (images && images.length > 0) {
       for (const img of images) {
         if (img.url.startsWith('data:')) {
-          const uploaded = await uploadImage(img.url);
+          const uploaded = await uploadBase64(img.url);
           uploadedImages.push({
             id: img.id || Date.now().toString(),
             url: uploaded.url,
@@ -103,14 +104,14 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
 
     for (const img of removedImages) {
       if (img.publicId) {
-        await deleteImage(img.publicId);
+        await deleteFile(img.publicId);
       }
     }
 
     const updatedNote = await Note.findByIdAndUpdate(
       req.params.id,
       {
-        title: title || 'Tanpa Judul',
+        title: title || 'Untitled',
         content,
         color,
         images: uploadedImages,
@@ -137,7 +138,7 @@ router.delete('/:id', async (req: AuthRequest, res: Response) => {
     // Delete images from Cloudinary
     for (const img of note.images) {
       if (img.publicId) {
-        await deleteImage(img.publicId);
+        await deleteFile(img.publicId);
       }
     }
 
@@ -148,7 +149,7 @@ router.delete('/:id', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// Upload image only
+// Upload image via base64
 router.post('/upload', async (req: AuthRequest, res: Response) => {
   try {
     const { image } = req.body;
@@ -156,7 +157,7 @@ router.post('/upload', async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'No image provided' });
     }
 
-    const uploaded = await uploadImage(image);
+    const uploaded = await uploadBase64(image);
     res.json({
       id: Date.now().toString(),
       url: uploaded.url,
@@ -165,6 +166,27 @@ router.post('/upload', async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error('Upload error:', error);
     res.status(500).json({ error: 'Failed to upload image' });
+  }
+});
+
+// Upload image via file (express-fileupload)
+router.post('/upload-file', async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.files || !req.files.file) {
+      return res.status(400).json({ error: 'No file provided' });
+    }
+
+    const file = req.files.file as UploadedFile;
+    const uploaded = await uploadFile(file);
+    
+    res.json({
+      id: Date.now().toString(),
+      url: uploaded.url,
+      publicId: uploaded.publicId,
+    });
+  } catch (error) {
+    console.error('Upload file error:', error);
+    res.status(500).json({ error: 'Failed to upload file' });
   }
 });
 
