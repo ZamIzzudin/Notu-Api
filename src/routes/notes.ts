@@ -1,15 +1,17 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { Note, INote } from '../models/Note';
 import { uploadImage, deleteImage } from '../config/cloudinary';
+import { authMiddleware, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
-// Get all notes
-router.get('/', async (req: Request, res: Response) => {
+// All routes require authentication
+router.use(authMiddleware);
+
+// Get all notes for authenticated user
+router.get('/', async (req: AuthRequest, res: Response) => {
   try {
-    const { userId } = req.query;
-    const query = userId ? { userId: userId as string } : {};
-    const notes = await Note.find(query).sort({ date: -1 });
+    const notes = await Note.find({ userId: req.userId }).sort({ date: -1 });
     res.json(notes);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch notes' });
@@ -17,9 +19,9 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 // Get single note
-router.get('/:id', async (req: Request, res: Response) => {
+router.get('/:id', async (req: AuthRequest, res: Response) => {
   try {
-    const note = await Note.findById(req.params.id);
+    const note = await Note.findOne({ _id: req.params.id, userId: req.userId });
     if (!note) {
       return res.status(404).json({ error: 'Note not found' });
     }
@@ -30,9 +32,9 @@ router.get('/:id', async (req: Request, res: Response) => {
 });
 
 // Create note
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', async (req: AuthRequest, res: Response) => {
   try {
-    const { title, content, color, images, userId } = req.body;
+    const { title, content, color, images } = req.body;
 
     const uploadedImages = [];
     if (images && images.length > 0) {
@@ -55,7 +57,7 @@ router.post('/', async (req: Request, res: Response) => {
       content,
       color,
       images: uploadedImages,
-      userId,
+      userId: req.userId,
       date: new Date(),
     });
 
@@ -68,10 +70,10 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 // Update note
-router.put('/:id', async (req: Request, res: Response) => {
+router.put('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { title, content, color, images } = req.body;
-    const existingNote = await Note.findById(req.params.id);
+    const existingNote = await Note.findOne({ _id: req.params.id, userId: req.userId });
 
     if (!existingNote) {
       return res.status(404).json({ error: 'Note not found' });
@@ -94,7 +96,6 @@ router.put('/:id', async (req: Request, res: Response) => {
     }
 
     // Delete removed images from Cloudinary
-    const existingImageIds = existingNote.images.map((img) => img.id);
     const newImageIds = images?.map((img: { id: string }) => img.id) || [];
     const removedImages = existingNote.images.filter(
       (img) => !newImageIds.includes(img.id)
@@ -126,9 +127,9 @@ router.put('/:id', async (req: Request, res: Response) => {
 });
 
 // Delete note
-router.delete('/:id', async (req: Request, res: Response) => {
+router.delete('/:id', async (req: AuthRequest, res: Response) => {
   try {
-    const note = await Note.findById(req.params.id);
+    const note = await Note.findOne({ _id: req.params.id, userId: req.userId });
     if (!note) {
       return res.status(404).json({ error: 'Note not found' });
     }
@@ -148,7 +149,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
 });
 
 // Upload image only
-router.post('/upload', async (req: Request, res: Response) => {
+router.post('/upload', async (req: AuthRequest, res: Response) => {
   try {
     const { image } = req.body;
     if (!image) {

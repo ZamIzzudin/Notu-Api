@@ -3,6 +3,7 @@ import cors from 'cors';
 import { config } from './config';
 import { connectDB } from './config/database';
 import notesRoutes from './routes/notes';
+import authRoutes from './routes/auth';
 
 const app = express();
 
@@ -23,6 +24,7 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+app.use('/api/auth', authRoutes);
 app.use('/api/notes', notesRoutes);
 
 // Connect to MongoDB and start server
