@@ -7,11 +7,9 @@ import {
   authMiddleware,
   AuthRequest 
 } from '../middleware/auth';
-import { OAuth2Client } from 'google-auth-library';
 import { config } from '../config';
 
 const router = Router();
-const googleClient = new OAuth2Client(config.google?.clientId);
 
 // Register
 router.post('/register', async (req: Request, res: Response) => {
@@ -172,81 +170,11 @@ router.get('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
       avatar: user.avatar,
       bio: user.bio,
       isPrivate: user.isPrivate,
-      authProvider: user.authProvider,
       friendsCount: user.friends?.length || 0,
     });
   } catch (error) {
     console.error('Get me error:', error);
     res.status(500).json({ error: 'Failed to get user info' });
-  }
-});
-
-// Google OAuth
-router.post('/google', async (req: Request, res: Response) => {
-  try {
-    const { credential } = req.body;
-
-    if (!credential) {
-      return res.status(400).json({ error: 'Google credential required' });
-    }
-
-    const ticket = await googleClient.verifyIdToken({
-      idToken: credential,
-      audience: config.google?.clientId,
-    });
-
-    const payload = ticket.getPayload();
-    if (!payload || !payload.email) {
-      return res.status(400).json({ error: 'Invalid Google token' });
-    }
-
-    const { email, name, picture, sub: googleId } = payload;
-
-    let user = await User.findOne({ email: email.toLowerCase() });
-
-    if (user) {
-      if (!user.googleId) {
-        user.googleId = googleId;
-        user.authProvider = 'google';
-        if (picture && !user.avatar) {
-          user.avatar = picture;
-        }
-      }
-    } else {
-      user = new User({
-        email: email.toLowerCase(),
-        name: name || email.split('@')[0],
-        googleId,
-        authProvider: 'google',
-        avatar: picture || '',
-        isPrivate: false,
-        friends: [],
-        friendRequests: [],
-        sentFriendRequests: [],
-      });
-    }
-
-    const accessToken = generateAccessToken(user._id.toString());
-    const refreshToken = generateRefreshToken(user._id.toString());
-    
-    user.refreshToken = refreshToken;
-    await user.save();
-
-    res.json({
-      message: 'Google login successful',
-      user: {
-        id: user._id,
-        email: user.email,
-        name: user.name,
-        avatar: user.avatar,
-        authProvider: user.authProvider,
-      },
-      accessToken,
-      refreshToken,
-    });
-  } catch (error) {
-    console.error('Google auth error:', error);
-    res.status(500).json({ error: 'Failed to authenticate with Google' });
   }
 });
 
@@ -276,7 +204,6 @@ router.put('/profile', authMiddleware, async (req: AuthRequest, res: Response) =
         avatar: user.avatar,
         bio: user.bio,
         isPrivate: user.isPrivate,
-        authProvider: user.authProvider,
       },
     });
   } catch (error) {

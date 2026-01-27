@@ -8,8 +8,6 @@ export interface IUser extends Document {
   avatar?: string;
   bio?: string;
   isPrivate: boolean;
-  googleId?: string;
-  authProvider: 'email' | 'google';
   refreshToken?: string;
   friends: mongoose.Types.ObjectId[];
   friendRequests: mongoose.Types.ObjectId[];
@@ -50,17 +48,8 @@ const UserSchema = new Schema<IUser>(
       type: Boolean,
       default: false
     },
-    googleId: {
-      type: String,
-      sparse: true
-    },
-    authProvider: {
-      type: String,
-      enum: ['email', 'google'],
-      default: 'email'
-    },
-    refreshToken: { 
-      type: String 
+    refreshToken: {
+      type: String
     },
     friends: [{
       type: Schema.Types.ObjectId,

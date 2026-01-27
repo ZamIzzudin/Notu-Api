@@ -27,7 +27,4 @@ export const config = {
     accessExpiry: "15m",
     refreshExpiry: "2d",
   },
-  google: {
-    clientId: process.env.GOOGLE_CLIENT_ID || "",
-  },
 };
