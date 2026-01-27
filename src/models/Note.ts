@@ -14,10 +14,9 @@ export interface INote extends Document {
   date: Date;
   userId?: string;
   isPinned: boolean;
-  isArchived: boolean;
   isDeleted: boolean;
   deletedAt?: Date;
-  isPublic: boolean;
+  isPublished: boolean;
   likes: mongoose.Types.ObjectId[];
   createdAt: Date;
   updatedAt: Date;
@@ -38,10 +37,9 @@ const NoteSchema = new Schema<INote>(
     date: { type: Date, default: Date.now },
     userId: { type: String, index: true },
     isPinned: { type: Boolean, default: false },
-    isArchived: { type: Boolean, default: false },
     isDeleted: { type: Boolean, default: false },
     deletedAt: { type: Date, default: null },
-    isPublic: { type: Boolean, default: true },
+    isPublished: { type: Boolean, default: false },
     likes: [{ type: Schema.Types.ObjectId, ref: 'User' }],
   },
   {

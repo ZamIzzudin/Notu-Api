@@ -14,20 +14,16 @@ router.use(authMiddleware);
 // Get all notes for authenticated user
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
-    const { archived, deleted } = req.query;
-    
+    const { deleted } = req.query;
+
     let filter: any = { userId: req.userId };
-    
+
     if (deleted === 'true') {
       filter.isDeleted = true;
-    } else if (archived === 'true') {
-      filter.isDeleted = { $ne: true };
-      filter.isArchived = true;
     } else {
       filter.isDeleted = { $ne: true };
-      filter.isArchived = { $ne: true };
     }
-    
+
     const notes = await Note.find(filter).sort({ isPinned: -1, date: -1 });
     res.json(notes);
   } catch (error) {
@@ -77,8 +73,8 @@ router.post('/', async (req: AuthRequest, res: Response) => {
       userId: req.userId,
       date: new Date(),
       isPinned: isPinned || false,
-      isArchived: false,
       isDeleted: false,
+      isPublished: false,
     });
 
     await note.save();
@@ -92,7 +88,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 // Update note
 router.put('/:id', async (req: AuthRequest, res: Response) => {
   try {
-    const { title, content, color, images, isPinned, isArchived } = req.body;
+    const { title, content, color, images, isPinned, isPublished } = req.body;
     const existingNote = await Note.findOne({ _id: req.params.id, userId: req.userId });
 
     if (!existingNote) {
@@ -136,7 +132,7 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
     };
 
     if (typeof isPinned === 'boolean') updateData.isPinned = isPinned;
-    if (typeof isArchived === 'boolean') updateData.isArchived = isArchived;
+    if (typeof isPublished === 'boolean') updateData.isPublished = isPublished;
 
     const updatedNote = await Note.findByIdAndUpdate(
       req.params.id,
@@ -275,7 +271,7 @@ router.post('/:id/like', async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: 'Note not found' });
     }
 
-    if (!note.isPublic && note.userId !== userId) {
+    if (!note.isPublished && note.userId !== userId) {
       return res.status(403).json({ error: 'Cannot like private note' });
     }
 
@@ -311,21 +307,8 @@ router.post('/:id/duplicate', async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: 'Note not found' });
     }
 
-    if (!originalNote.isPublic && originalNote.userId !== userId) {
-      const noteOwner = await User.findById(originalNote.userId);
-      const currentUser = await User.findById(userId);
-      
-      if (!noteOwner || !currentUser) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-
-      const isFriend = currentUser.friends.some(
-        (f) => f.toString() === originalNote.userId
-      );
-
-      if (!isFriend) {
-        return res.status(403).json({ error: 'Cannot duplicate private note' });
-      }
+    if (!originalNote.isPublished && originalNote.userId !== userId) {
+      return res.status(403).json({ error: 'Cannot duplicate private note' });
     }
 
     const duplicatedNote = new Note({
@@ -351,23 +334,23 @@ router.post('/:id/duplicate', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// Toggle note visibility (public/private)
+// Toggle note visibility (published/unpublished)
 router.put('/:id/visibility', async (req: AuthRequest, res: Response) => {
   try {
     const noteId = req.params.id;
-    const { isPublic } = req.body;
+    const { isPublished } = req.body;
 
     const note = await Note.findOne({ _id: noteId, userId: req.userId });
     if (!note) {
       return res.status(404).json({ error: 'Note not found' });
     }
 
-    note.isPublic = isPublic;
+    note.isPublished = isPublished;
     await note.save();
 
     res.json({
       message: 'Note visibility updated',
-      isPublic: note.isPublic,
+      isPublished: note.isPublished,
     });
   } catch (error) {
     console.error('Update visibility error:', error);
@@ -393,23 +376,16 @@ router.get('/user/:userId', async (req: AuthRequest, res: Response) => {
     const isFriend = currentUser.friends.some((f) => f.toString() === targetUserId);
     const isOwn = currentUserId === targetUserId;
 
-    if (!isOwn && !isFriend) {
-      return res.status(403).json({ error: 'Not authorized to view notes' });
-    }
-
+    // If not own profile and profile is private, don't show anything
     if (!isOwn && targetUser.isPrivate) {
-      return res.status(403).json({ error: 'User profile is private' });
+      return res.json([]);
     }
 
     const filter: any = {
       userId: targetUserId,
       isDeleted: { $ne: true },
-      isArchived: { $ne: true },
+      isPublished: true,
     };
-
-    if (!isOwn) {
-      filter.isPublic = true;
-    }
 
     const notes = await Note.find(filter).sort({ isPinned: -1, date: -1 });
 
@@ -422,7 +398,7 @@ router.get('/user/:userId', async (req: AuthRequest, res: Response) => {
       date: note.date,
       userId: note.userId,
       isPinned: note.isPinned,
-      isPublic: note.isPublic,
+      isPublished: note.isPublished,
       likesCount: note.likes?.length || 0,
       isLiked: note.likes?.some((id) => id.toString() === currentUserId) || false,
       isOwn,
