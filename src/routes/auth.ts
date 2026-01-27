@@ -8,6 +8,7 @@ import {
   AuthRequest 
 } from '../middleware/auth';
 import { config } from '../config';
+import { uploadBase64, deleteFile } from '../config/upload';
 
 const router = Router();
 
@@ -190,8 +191,38 @@ router.put('/profile', authMiddleware, async (req: AuthRequest, res: Response) =
 
     if (name !== undefined) user.name = name.trim();
     if (bio !== undefined) user.bio = bio.substring(0, 200);
-    if (avatar !== undefined) user.avatar = avatar;
     if (isPrivate !== undefined) user.isPrivate = isPrivate;
+
+    // Handle avatar upload to Cloudinary
+    if (avatar !== undefined) {
+      // If avatar is a base64 string, upload it to Cloudinary
+      if (avatar && avatar.startsWith('data:')) {
+        try {
+          // Delete old avatar from Cloudinary if it exists
+          if (user.avatarPublicId) {
+            await deleteFile(user.avatarPublicId);
+          }
+
+          // Upload new avatar
+          const uploaded = await uploadBase64(avatar);
+          user.avatar = uploaded.url;
+          user.avatarPublicId = uploaded.publicId;
+        } catch (uploadError) {
+          console.error('Avatar upload error:', uploadError);
+          return res.status(500).json({ error: 'Failed to upload avatar' });
+        }
+      } else if (avatar === '') {
+        // Remove avatar
+        if (user.avatarPublicId) {
+          await deleteFile(user.avatarPublicId);
+        }
+        user.avatar = undefined;
+        user.avatarPublicId = undefined;
+      } else {
+        // Just update the avatar URL (for external URLs)
+        user.avatar = avatar;
+      }
+    }
 
     await user.save();
 
